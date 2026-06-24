@@ -24,8 +24,8 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | docker run -
 
 ### Local
 ```bash
-go build -o mcp-gedcom ./cmd/mcp-gedcom/server
-./mcp-gedcom -gedcom-file sample/simpsons.ged
+go build -o mcp-gedcom_linux_amd64 ./cmd/mcp-gedcom/server
+./mcp-gedcom_linux_amd64 -gedcom-file sample/simpsons.ged
 ```
 
 ## Usage

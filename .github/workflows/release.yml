@@ -6,11 +6,13 @@ on:
       - 'v*'
 
 jobs:
-  release:
-    name: Release
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -25,30 +27,37 @@ jobs:
 
       - name: Get version
         id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Build for Linux
+      - name: Build
         env:
-          GOOS: linux
-          GOARCH: amd64
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        id: build
         run: |
-          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" -o mcp-gedcom-linux-amd64 ./cmd/mcp-gedcom/server
+          NAME="mcp-gedcom-${GOOS}-${GOARCH}"
+          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" -o "$NAME" ./cmd/mcp-gedcom/server
+          echo "binary=$NAME" >> $GITHUB_OUTPUT
 
-      - name: Build for macOS
-        env:
-          GOOS: darwin
-          GOARCH: amd64
-        run: |
-          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" -o mcp-gedcom-darwin-amd64 ./cmd/mcp-gedcom/server
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.build.outputs.binary }}
+          path: ${{ steps.build.outputs.binary }}
 
-      - name: Build for Windows
-        env:
-          GOOS: windows
-          GOARCH: amd64
-        run: |
-          go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" -o mcp-gedcom-windows-amd64.exe ./cmd/mcp-gedcom/server
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: mcp-gedcom-*
+          path: ./
+          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -56,9 +65,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') }}
           generate_release_notes: true
-          files: |
-            mcp-gedcom-linux-amd64
-            mcp-gedcom-darwin-amd64
-            mcp-gedcom-windows-amd64.exe
+          files: mcp-gedcom-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
