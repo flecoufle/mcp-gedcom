@@ -1,0 +1,20 @@
+# Go
+*.test
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Build
+/bin/
+/dist/
+/mcp-gedcom
+simple_test.sh
+
+# Environment
+.env
