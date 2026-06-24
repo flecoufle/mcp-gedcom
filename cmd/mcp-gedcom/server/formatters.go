@@ -286,14 +286,14 @@ func formatGetPersonalDetailsResult(result map[string]interface{}) *mcp.CallTool
 		for _, af := range afamilies {
 			fmt.Fprintf(&sb, "\n- Ancestor family %s:", getString(af["id"]))
 			if father, ok := af["father"].(map[string]interface{}); ok {
-				sb.WriteString(fmt.Sprintf("\n  - Father: %s (%s)",
-					getString(father["name"]), getString(father["id"])))
+				fmt.Fprintf(&sb, "\n  - Father: %s (%s)",
+					getString(father["name"]), getString(father["id"]))
 			}
 			if mother, ok := af["mother"].(map[string]interface{}); ok {
-				sb.WriteString(fmt.Sprintf("\n  - Mother: %s (%s)",
-					getString(mother["name"]), getString(mother["id"])))
+				fmt.Fprintf(&sb, "\n  - Mother: %s (%s)",
+					getString(mother["name"]), getString(mother["id"]))
 			}
-			sb.WriteString(fmt.Sprintf("\n  - Children: %v", af["children_count"]))
+			fmt.Fprintf(&sb, "\n  - Children: %v", af["children_count"])
 		}
 	}
 
