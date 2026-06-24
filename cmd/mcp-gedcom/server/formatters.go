@@ -384,7 +384,7 @@ func formatGetFamilyByIDResult(result map[string]interface{}) *mcp.CallToolResul
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("- Number of children: %v\n", result["child_count"]))
+	fmt.Fprintf(&sb, "- Number of children: %v\n", result["child_count"])
 
 	if timeline, ok := result["timeline"].([]interface{}); ok && len(timeline) > 0 {
 		sb.WriteString("- Geographic timeline:\n")
@@ -401,14 +401,14 @@ func formatGetFamilyByIDResult(result map[string]interface{}) *mcp.CallToolResul
 			if country != "" && country != city {
 				loc += " / " + country
 			}
-			sb.WriteString(fmt.Sprintf("  From %s to %s: %s\n", fromDate, toDate, loc))
+			fmt.Fprintf(&sb, "  From %s to %s: %s\n", fromDate, toDate, loc)
 			if evts, ok := seg["events"].([]interface{}); ok {
 				for _, evI := range evts {
 					ev, _ := evI.(map[string]interface{})
 					if ev == nil {
 						continue
 					}
-					sb.WriteString(fmt.Sprintf("    - %s: %s\n", getString(ev["date"]), getString(ev["label"])))
+					fmt.Fprintf(&sb, "    - %s: %s\n", getString(ev["date"]), getString(ev["label"]))
 				}
 			}
 		}
@@ -634,7 +634,7 @@ func formatFindRelationshipPathResult(result map[string]interface{}) *mcp.CallTo
 			//Avant le isMeeting afficher le lien avant le nom
 			if !isMeetingFound {
 				if link, ok := node["haveA"].(string); ok && link != "" {
-					sb.WriteString(fmt.Sprintf(" [%s of →] ", link))
+					fmt.Fprintf(&sb, " [%s of →] ", link)
 				}
 			}
 
@@ -649,7 +649,7 @@ func formatFindRelationshipPathResult(result map[string]interface{}) *mcp.CallTo
 			//Après le isMeeting afficher le lien après le nom
 			if isMeetingFound {
 				if link, ok := node["haveA"].(string); ok && link != "" {
-					sb.WriteString(fmt.Sprintf(" [%s of →] ", link))
+					fmt.Fprintf(&sb, " [%s of →] ", link)
 				}
 			}
 		}
@@ -663,11 +663,7 @@ func formatFindRelationshipPathResult(result map[string]interface{}) *mcp.CallTo
 func formatGetStatisticsResult(result map[string]interface{}) *mcp.CallToolResult {
 	var sb strings.Builder
 	sb.WriteString("GEDCOM Statistics:\n")
-	sb.WriteString("- Total individuals: ")
-	sb.WriteString(fmt.Sprintf("%d", result["total_individuals"]))
-	sb.WriteString("\n- Total families: ")
-	sb.WriteString(fmt.Sprintf("%d", result["total_families"]))
-	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "- Total individuals: %d\n- Total families: %d\n", result["total_individuals"], result["total_families"])
 
 	return mcp.NewCallToolResult(sb.String())
 }
@@ -821,9 +817,9 @@ func formatFindAllRelationshipsResult(links []gedcom.RelationshipLink, coefficie
 
 		relLabel := block.RelationLabel
 
-		sb.WriteString(fmt.Sprintf(" %s %s %s %s %s.\n\n",
+		fmt.Fprintf(&sb, " %s %s %s %s %s.\n\n",
 			firstDisplay, prefix, relLabel,
-			display.DeName(lastName.first), lastName.surName))
+			display.DeName(lastName.first), lastName.surName)
 
 		if !isAncestorResult {
 			sb.WriteString("En effet,\n")
@@ -842,7 +838,7 @@ func formatFindAllRelationshipsResult(links []gedcom.RelationshipLink, coefficie
 				if as == "F" {
 					blockSex = "F"
 				}
-				sb.WriteString(fmt.Sprintf("%s %s\n", ancDisplay, linkLabel))
+				fmt.Fprintf(&sb, "%s %s\n", ancDisplay, linkLabel)
 			}
 
 			isPlural := len(block.AncestorIDs) > 1
@@ -866,14 +862,14 @@ func formatFindAllRelationshipsResult(links []gedcom.RelationshipLink, coefficie
 			labelB := gedcom.AncestorLabel(block.DepthB, isCouple, blockSex)
 			labelA := gedcom.AncestorLabel(block.DepthA, isCouple, blockSex)
 
-			sb.WriteString(fmt.Sprintf("%s%s %s %s\n", labelPrefix, labelB, display.DeName(nameInfoB.first), nameInfoB.surName))
-			sb.WriteString(fmt.Sprintf("%s%s %s %s\n", labelPrefix, labelA, display.DeName(nameInfoA.first), nameInfoA.surName))
+			fmt.Fprintf(&sb, "%s%s %s %s\n", labelPrefix, labelB, display.DeName(nameInfoB.first), nameInfoB.surName)
+			fmt.Fprintf(&sb, "%s%s %s %s\n", labelPrefix, labelA, display.DeName(nameInfoA.first), nameInfoA.surName)
 		}
 	}
 
 	// Coefficient with comma as decimal separator
 	coeffStr := strings.Replace(fmt.Sprintf("%.1f", coefficient*100), ".", ",", 1)
-	sb.WriteString(fmt.Sprintf("Parenté: %s%%", coeffStr))
+	fmt.Fprintf(&sb, "Parenté: %s%%", coeffStr)
 
 	result := map[string]interface{}{
 		"blocks":      blocks,
@@ -886,9 +882,9 @@ func formatFindAllRelationshipsResult(links []gedcom.RelationshipLink, coefficie
 
 func formatLoadGedcomFileResult(result map[string]interface{}) *mcp.CallToolResult {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("GEDCOM file loaded: %s\n", result["path"]))
-	sb.WriteString(fmt.Sprintf("- Total individuals: %v\n", result["total_individuals"]))
-	sb.WriteString(fmt.Sprintf("- Total families: %v\n", result["total_families"]))
+	fmt.Fprintf(&sb, "GEDCOM file loaded: %s\n", result["path"])
+	fmt.Fprintf(&sb, "- Total individuals: %v\n", result["total_individuals"])
+	fmt.Fprintf(&sb, "- Total families: %v\n", result["total_families"])
 	return mcp.NewCallToolResultWithStructured(sb.String(), result)
 }
 
