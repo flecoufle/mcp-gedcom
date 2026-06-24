@@ -179,7 +179,9 @@ func TestGetGedcomReaderMultipleEncodings(t *testing.T) {
 
 			tmpDir := t.TempDir()
 			tmpFile := filepath.Join(tmpDir, "test.ged")
-			os.WriteFile(tmpFile, []byte(content), 0644)
+			if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
 
 			reader, err := GetGedcomReader(tmpFile)
 			if err != nil {

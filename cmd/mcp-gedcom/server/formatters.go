@@ -105,9 +105,9 @@ func formatGetPersonalDetailsResult(result map[string]interface{}) *mcp.CallTool
 
 	if sgs, ok := result["siblings_groups"].([]map[string]interface{}); ok {
 		for _, sg := range sgs {
-			sb.WriteString(fmt.Sprintf("\n- %s", getString(sg["label"])))
+			fmt.Fprintf(&sb, "\n- %s", getString(sg["label"]))
 			if id := getString(sg["id"]); id != "" {
-				sb.WriteString(fmt.Sprintf(" [%s]", id))
+				fmt.Fprintf(&sb, " [%s]", id)
 			}
 			if parents, ok := sg["parents"].(map[string]interface{}); ok {
 				parts := []string{}
@@ -284,7 +284,7 @@ func formatGetPersonalDetailsResult(result map[string]interface{}) *mcp.CallTool
 
 	if afamilies, ok := result["ancestor_families"].([]map[string]interface{}); ok {
 		for _, af := range afamilies {
-			sb.WriteString(fmt.Sprintf("\n- Ancestor family %s:", getString(af["id"])))
+			fmt.Fprintf(&sb, "\n- Ancestor family %s:", getString(af["id"]))
 			if father, ok := af["father"].(map[string]interface{}); ok {
 				sb.WriteString(fmt.Sprintf("\n  - Father: %s (%s)",
 					getString(father["name"]), getString(father["id"])))
