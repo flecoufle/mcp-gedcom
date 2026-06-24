@@ -34,7 +34,7 @@ func formatSearchSurnamesResult(result map[string]interface{}) *mcp.CallToolResu
 			sb.WriteString("- ")
 			sb.WriteString(name)
 			sb.WriteString(" (")
-			sb.WriteString(fmt.Sprintf("%d", count))
+			fmt.Fprintf(&sb, "%d", count)
 			sb.WriteString(")\n")
 			structuredSurnames = append(structuredSurnames, map[string]interface{}{
 				"name":  name,
@@ -71,13 +71,7 @@ func formatSearchSurnamesResult(result map[string]interface{}) *mcp.CallToolResu
 			"limit":  limit,
 			"total":  total,
 		}
-		sb.WriteString("\nPagination: ")
-		sb.WriteString(fmt.Sprintf("%d", offset))
-		sb.WriteString("-")
-		sb.WriteString(fmt.Sprintf("%d", limit))
-		sb.WriteString(" of ")
-		sb.WriteString(fmt.Sprintf("%d", total))
-		sb.WriteString(" total\n")
+		fmt.Fprintf(&sb, "\nPagination: %d-%d of %d total\n", offset, limit, total)
 	}
 
 	structuredResult := map[string]interface{}{

@@ -32,15 +32,6 @@ func NormalizeID(id string) string {
 	return id
 }
 
-func containsID(slice []string, id string) bool {
-	for _, s := range slice {
-		if s == id {
-			return true
-		}
-	}
-	return false
-}
-
 func pathContainsID(path []string, id string) bool {
 	for i := 0; i < len(path)-1; i++ {
 		if path[i] == id {
@@ -175,10 +166,6 @@ func areMarried(loader *Loader, id1, id2 string) bool {
 	return false
 }
 
-type familyKey struct {
-	depthA, depthB   int
-	prefixA, prefixB string
-}
 
 func pathPrefix(path []string) string {
 	if len(path) <= 1 {

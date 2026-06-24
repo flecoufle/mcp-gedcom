@@ -18,7 +18,9 @@ func TestGetGedcomReaderUTF8(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_utf8.ged")
-	os.WriteFile(tmpFile, []byte(content), 0644)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	reader, err := GetGedcomReader(tmpFile)
 	if err != nil {
@@ -45,7 +47,9 @@ func TestGetGedcomReaderASCII(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_ascii.ged")
-	os.WriteFile(tmpFile, []byte(content), 0644)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	reader, err := GetGedcomReader(tmpFile)
 	if err != nil {
@@ -72,7 +76,9 @@ func TestGetGedcomReaderANSI(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_ansi.ged")
-	os.WriteFile(tmpFile, []byte(content), 0644)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	reader, err := GetGedcomReader(tmpFile)
 	if err != nil {
@@ -99,7 +105,9 @@ func TestGetGedcomReaderANSEL(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_ansel.ged")
-	os.WriteFile(tmpFile, []byte(content), 0644)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	reader, err := GetGedcomReader(tmpFile)
 	if err != nil {
@@ -126,7 +134,9 @@ func TestGetGedcomReaderDefault(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test_default.ged")
-	os.WriteFile(tmpFile, []byte(content), 0644)
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	reader, err := GetGedcomReader(tmpFile)
 	if err != nil {

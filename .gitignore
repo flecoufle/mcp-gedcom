@@ -18,3 +18,4 @@ simple_test.sh
 
 # Environment
 .env
+test_local.sh

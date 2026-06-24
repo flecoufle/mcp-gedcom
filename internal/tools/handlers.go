@@ -265,9 +265,10 @@ func buildGodchildren(ind *gdcom.IndividualRecord) []map[string]interface{} {
 			continue
 		}
 		rel := "godchild"
-		if child.Sex == "M" {
+		switch child.Sex {
+		case "M":
 			rel = "godson"
-		} else if child.Sex == "F" {
+		case "F":
 			rel = "goddaughter"
 		}
 		entry := map[string]interface{}{
@@ -1681,9 +1682,10 @@ func collectDescendants(ind *gdcom.IndividualRecord, currentGen, maxGen int, res
 			seen[child.Xref] = true
 
 			sex := "child"
-			if child.Sex == "M" {
+			switch child.Sex {
+			case "M":
 				sex = "son"
-			} else if child.Sex == "F" {
+			case "F":
 				sex = "daughter"
 			}
 
