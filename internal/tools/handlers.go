@@ -1754,11 +1754,11 @@ func HandleFindAllRelationships(id1, id2 string, maxDepth int, maxResults int) (
 
 	ind1 := gedcom.Get().Individual(cleanID1)
 	if ind1 == nil {
-		return nil, 0, fmt.Errorf("individual not found: " + id1)
+		return nil, 0, fmt.Errorf("individual not found: %s", id1)
 	}
 	ind2 := gedcom.Get().Individual(cleanID2)
 	if ind2 == nil {
-		return nil, 0, fmt.Errorf("individual not found: " + id2)
+		return nil, 0, fmt.Errorf("individual not found: %s", id2)
 	}
 
 	links := gedcom.FindAllRelationships(gedcom.Get(), cleanID1, cleanID2, maxDepth, maxResults)
