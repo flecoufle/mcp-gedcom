@@ -1,365 +1,204 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -uo pipefail
 
 cd "$(dirname "$0")"
 
-# can be disabled later
-rm mcp-gedcom 2>/dev/null
+BIN="${BIN:-/out/mcp-gedcom}"
+GEDCOM_FILE="${GEDCOM_FILE:-./gedcom.ged}"
 
-if [ ! -f ./mcp-gedcom ]; then
-    echo "Local Building mcp-gedcom..."
-    go build -o mcp-gedcom ./cmd/mcp-gedcom/server
-
-    if [ $? -ne 0 ]; then
-        echo "Build failed!"
-        exit 1
-    fi
+if [ ! -x "$BIN" ]; then
+    echo "Binary not found or not executable: $BIN" >&2
+    echo "Run this script inside the Docker test stage or set BIN explicitly." >&2
+    exit 1
 fi
 
-echo "Running mcp-gedcom tests..."
+if ! command -v jq >/dev/null 2>&1; then
+    echo "jq is required for integration tests." >&2
+    exit 1
+fi
+
+if [ ! -f "$GEDCOM_FILE" ]; then
+    echo "GEDCOM file not found: $GEDCOM_FILE" >&2
+    exit 1
+fi
 
 PASS=0
 FAIL=0
 
-run_json() {
-    echo "$1" | ./mcp-gedcom 2>/dev/null
+pass() {
+    echo "✓ $1"
+    PASS=$((PASS + 1))
 }
 
-JSON=$(run_json '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"roots":{"listChanged":true},"sampling":{}},"clientInfo":{"name":"test","version":"1.0.0"}}}')
-if echo "$JSON" | jq -r '.result.protocolVersion' 2>/dev/null | grep -q "2024-11-05"; then
-    echo "✓ Initialize"
-    ((PASS++))
-else
-    echo "✗ Initialize"
-    ((FAIL++))
-fi
+fail() {
+    echo "✗ $1"
+    FAIL=$((FAIL + 1))
+}
+
+run_json() {
+    echo "$1" | "$BIN" -gedcom-file "$GEDCOM_FILE" 2>/dev/null
+}
+
+check_text() {
+    local label="$1" response="$2" pattern="$3"
+    if printf '%s' "$response" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi -- "$pattern"; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
+check_text_absent() {
+    local label="$1" response="$2" pattern="$3"
+    if printf '%s' "$response" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi -- "$pattern"; then
+        fail "$label"
+    else
+        pass "$label"
+    fi
+}
+
+check_error() {
+    local label="$1" response="$2"
+    if [ "$(printf '%s' "$response" | jq -r '.result.isError' 2>/dev/null)" = "true" ]; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
+check_error_message() {
+    local label="$1" response="$2" pattern="$3"
+    if [ "$(printf '%s' "$response" | jq -r '.result.isError' 2>/dev/null)" = "true" ] \
+        && printf '%s' "$response" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi -- "$pattern"; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
+check_jq_equals() {
+    local label="$1" response="$2" filter="$3" expected="$4"
+    if [ "$(printf '%s' "$response" | jq -r "$filter" 2>/dev/null)" = "$expected" ]; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
+check_jq_contains() {
+    local label="$1" response="$2" filter="$3" pattern="$4"
+    if printf '%s' "$response" | jq -r "$filter" 2>/dev/null | grep -q -- "$pattern"; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
+echo "Running mcp-gedcom tests..."
+
+INIT=$(run_json '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{"roots":{"listChanged":true},"sampling":{}},"clientInfo":{"name":"test","version":"1.0.0"}}}')
+check_jq_equals "Initialize" "$INIT" '.result.protocolVersion' "2024-11-05"
 
 TOOLS=$(run_json '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
-TOOL_COUNT=$(echo "$TOOLS" | jq '.result.tools | length' 2>/dev/null)
-if [ "$TOOL_COUNT" = "14" ]; then
-    echo "✓ List tools (14 tools)"
-    ((PASS++))
-else
-    echo "✗ List tools (expected 14, got $TOOL_COUNT)"
-    ((FAIL++))
-fi
+check_jq_equals "List tools (14 tools)" "$TOOLS" '.result.tools | length' "14"
 
-SEARCH_WILLIAMS='{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Eugene"}}}'
-RESPONSE=$(run_json "$SEARCH_WILLIAMS")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Eugene"; then
-    echo "✓ search_person Eugene"
-    ((PASS++))
-else
-    echo "✗ search_person Eugene"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Eugene"}}}')
+check_text "search_person Eugene" "$RESPONSE" "Eugene"
 
-SEARCH_WILLIAMS_SURNAME='{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Robert Eugene Williams"}}}'
-RESPONSE=$(run_json "$SEARCH_WILLIAMS_SURNAME")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Robert Eugene Williams"; then
-    echo "✓ search_person Robert Eugene Williams"
-    ((PASS++))
-else
-    echo "✗ search_person Robert Eugene Williams"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Robert Eugene Williams"}}}')
+check_text "search_person Robert Eugene Williams" "$RESPONSE" "Robert Eugene Williams"
 
-SEARCH_PERSON_BIRTHYEAR='{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Williams","birthYear":1910}}}'
-RESPONSE=$(run_json "$SEARCH_PERSON_BIRTHYEAR")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Williams"; then
-    echo "✓ search_person with birthYear 1910"
-    ((PASS++))
-else
-    echo "✗ search_person with birthYear 1910"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"Williams","birthYear":1910}}}')
+check_text "search_person with birthYear 1910" "$RESPONSE" "Williams"
 
-GET_I1='{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1"}}}'
-RESPONSE=$(run_json "$GET_I1")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "williams"; then
-    echo "✓ get_person_details I1"
-    ((PASS++))
-else
-    echo "✗ get_person_details I1"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1"}}}')
+check_text "get_person_details I1" "$RESPONSE" "williams"
 
-GET_I1_CURLY='{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"@I1@"}}}'
-RESPONSE=$(run_json "$GET_I1_CURLY")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "williams"; then
-    echo "✓ get_person_details @I1@"
-    ((PASS++))
-else
-    echo "✗ get_person_details @I1@"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"@I1@"}}}')
+check_text "get_person_details @I1@" "$RESPONSE" "williams"
 
-RELATIVES=$(run_json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1"}}}')
-if echo "$RELATIVES" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Spouse"; then
-    echo "✓ get_person_details returns relatives"
-    ((PASS++))
-else
-    echo "✗ get_person_details returns relatives"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1"}}}')
+check_text "get_person_details returns relatives" "$RESPONSE" "Spouse"
 
-GET_FAMILY='{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"get_family_details","arguments":{"id":"F1"}}}'
-RESPONSE=$(run_json "$GET_FAMILY")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Robert Eugene"; then
-    echo "✓ get_family_details"
-    ((PASS++))
-else
-    echo "✗ get_family_details"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"get_family_details","arguments":{"id":"F1"}}}')
+check_text "get_family_details" "$RESPONSE" "Robert Eugene"
 
-GET_FAMILY_NOT_FOUND='{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"get_family_details","arguments":{"id":"F999"}}}'
-RESPONSE=$(run_json "$GET_FAMILY_NOT_FOUND")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ]; then
-    echo "✓ get_family_details not found"
-    ((PASS++))
-else
-    echo "✗ get_family_details not found"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"get_family_details","arguments":{"id":"F999"}}}')
+check_error "get_family_details not found" "$RESPONSE"
 
-BIRTH_RANGE='{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"search_by_date_range","arguments":{"startYear":1800,"endYear":1850,"event":"birth"}}}'
-RESPONSE=$(run_json "$BIRTH_RANGE")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Williams"; then
-    echo "✓ search_by_date_range birth 1800-1850"
-    ((PASS++))
-else
-    echo "✗ search_by_date_range birth 1800-1850"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"search_by_date_range","arguments":{"startYear":1800,"endYear":1850,"event":"birth"}}}')
+check_text "search_by_date_range birth 1800-1850" "$RESPONSE" "Williams"
 
-DEATH_RANGE='{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"search_by_date_range","arguments":{"startYear":1900,"endYear":1950,"event":"death"}}}'
-RESPONSE=$(run_json "$DEATH_RANGE")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Individuals found"; then
-    echo "✓ search_by_date_range death 1900-1950"
-    ((PASS++))
-else
-    echo "✗ search_by_date_range death 1900-1950"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"search_by_date_range","arguments":{"startYear":1900,"endYear":1950,"event":"death"}}}')
+check_text "search_by_date_range death 1900-1950" "$RESPONSE" "Individuals found"
 
-NOT_FOUND='{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"NonExistentPerson"}}}'
-RESPONSE=$(run_json "$NOT_FOUND")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ]; then
-    echo "✓ Not found returns isError"
-    ((PASS++))
-else
-    echo "✗ Not found returns isError"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"search_person","arguments":{"pattern":"NonExistentPerson"}}}')
+check_error "Not found returns isError" "$RESPONSE"
 
-LASTNAME='{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil"}}}'
-RESPONSE=$(run_json "$LASTNAME")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Williams"; then
-    echo "✓ search_surnames Wil"
-    ((PASS++))
-else
-    echo "✗ search_surnames Wil"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil"}}}')
+check_text "search_surnames Wil" "$RESPONSE" "Williams"
 
-LASTNAME_PAGINATED='{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil","offset":0,"limit":10}}}'
-RESPONSE=$(run_json "$LASTNAME_PAGINATED")
-if echo "$RESPONSE" | jq -r '.result.structuredContent.pagination.total' 2>/dev/null | grep -q "2"; then
-    echo "✓ search_surnames pagination"
-    ((PASS++))
-else
-    echo "✗ search_surnames pagination"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil","offset":0,"limit":10}}}')
+check_jq_equals "search_surnames pagination" "$RESPONSE" '.result.structuredContent.pagination.total' "2"
 
-SEARCH_INDIVIDUALS_NO_NAME='{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"search_person","arguments":{}}}'
-RESPONSE=$(run_json "$SEARCH_INDIVIDUALS_NO_NAME")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ] && echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Missing required parameter: pattern"; then
-    echo "✓ search_person missing pattern returns error"
-    ((PASS++))
-else
-    echo "✗ search_person missing pattern returns error"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"search_person","arguments":{}}}')
+check_error_message "search_person missing pattern returns error" "$RESPONSE" "Missing required parameter: pattern"
 
-SEARCH_SURNAMES_NO_PATTERN='{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"search_surnames","arguments":{}}}'
-RESPONSE=$(run_json "$SEARCH_SURNAMES_NO_PATTERN")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ] && echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Missing required parameter: pattern"; then
-    echo "✓ search_surnames missing pattern returns error"
-    ((PASS++))
-else
-    echo "✗ search_surnames missing pattern returns error"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"search_surnames","arguments":{}}}')
+check_error_message "search_surnames missing pattern returns error" "$RESPONSE" "Missing required parameter: pattern"
 
-GET_INDIVIDUAL_NO_ID='{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"get_person_details","arguments":{}}}'
-RESPONSE=$(run_json "$GET_INDIVIDUAL_NO_ID")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ] && echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Missing required parameter: id"; then
-    echo "✓ get_person_details missing id returns error"
-    ((PASS++))
-else
-    echo "✗ get_person_details missing id returns error"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"get_person_details","arguments":{}}}')
+check_error_message "get_person_details missing id returns error" "$RESPONSE" "Missing required parameter: id"
 
-GET_PERSON_DETAILS_NO_SPOUSE='{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1","withSpouse":false}}}'
-RESPONSE=$(run_json "$GET_PERSON_DETAILS_NO_SPOUSE")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qv "Spouse"; then
-    echo "✓ get_person_details without spouse"
-    ((PASS++))
-else
-    echo "✗ get_person_details without spouse"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":26,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1","withSpouse":false}}}')
+check_text_absent "get_person_details without spouse" "$RESPONSE" "- Spouse:"
 
-GET_PERSON_DETAILS_NO_CHILDREN='{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1","withChildren":false}}}'
-RESPONSE=$(run_json "$GET_PERSON_DETAILS_NO_CHILDREN")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qv "Children"; then
-    echo "✓ get_person_details without children"
-    ((PASS++))
-else
-    echo "✗ get_person_details without children"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":27,"method":"tools/call","params":{"name":"get_person_details","arguments":{"id":"I1","withChildren":false}}}')
+check_text_absent "get_person_details without children" "$RESPONSE" "- Children:"
 
-GET_RELATIVES='{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"get_relatives","arguments":{"id":"I1"}}}'
-RESPONSE=$(run_json "$GET_RELATIVES")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Relatives of"; then
-    echo "✓ get_relatives"
-    ((PASS++))
-else
-    echo "✗ get_relatives"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":28,"method":"tools/call","params":{"name":"get_relatives","arguments":{"id":"I1"}}}')
+check_text "get_relatives" "$RESPONSE" "Relatives of"
 
-FIND_PATH='{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I3"}}}'
-RESPONSE=$(run_json "$FIND_PATH")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Relationship"; then
-    echo "✓ find_relationship_path"
-    ((PASS++))
-else
-    echo "✗ find_relationship_path"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":29,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I3"}}}')
+check_text "find_relationship_path" "$RESPONSE" "Relationship"
 
-FIND_PATH_NOT_FOUND='{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I999"}}}'
-RESPONSE=$(run_json "$FIND_PATH_NOT_FOUND")
-if echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null | grep -q "true"; then
-    echo "✓ find_relationship_path not found returns error"
-    ((PASS++))
-else
-    echo "✗ find_relationship_path not found returns error"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":30,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I999"}}}')
+check_error "find_relationship_path not found returns error" "$RESPONSE"
 
-FIND_PATH_ALL='{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I2","AncestorsOnly":false}}}'
-RESPONSE=$(run_json "$FIND_PATH_ALL")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "yes relationship found"; then
-    echo "✓ find_relationship_path AncestorsOnly=false"
-    ((PASS++))
-else
-    echo "✗ find_relationship_path AncestorsOnly=false"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I2","AncestorsOnly":false}}}')
+check_text "find_relationship_path AncestorsOnly=false" "$RESPONSE" "yes relationship found"
 
-FIND_PATH_TRUE='{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I2","AncestorsOnly":true}}}'
-RESPONSE=$(run_json "$FIND_PATH_TRUE")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "no relationship found"; then
-    echo "✓ find_relationship_path AncestorsOnly=true not found"
-    ((PASS++))
-else
-    echo "✗ find_relationship_path AncestorsOnly=true not found"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"find_relationship_path","arguments":{"id1":"I1","id2":"I2","AncestorsOnly":true}}}')
+check_text "find_relationship_path AncestorsOnly=true not found" "$RESPONSE" "no relationship found"
 
-UNKNOWN_TOOL='{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"unknown_tool","arguments":{}}}'
-RESPONSE=$(run_json "$UNKNOWN_TOOL")
-IS_ERROR=$(echo "$RESPONSE" | jq -r '.result.isError' 2>/dev/null)
-if [ "$IS_ERROR" = "true" ]; then
-    echo "✓ Unknown tool returns isError"
-    ((PASS++))
-else
-    echo "✗ Unknown tool returns isError"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"unknown_tool","arguments":{}}}')
+check_error "Unknown tool returns isError" "$RESPONSE"
 
-GET_CHILDREN='{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"get_children","arguments":{"id":"I1"}}}'
-RESPONSE=$(run_json "$GET_CHILDREN")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -qi "Joe"; then
-    echo "✓ get_children"
-    ((PASS++))
-else
-    echo "✗ get_children"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"get_children","arguments":{"id":"I1"}}}')
+check_text "get_children" "$RESPONSE" "Joe"
 
-GET_PARENTS='{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"get_parents","arguments":{"id":"I3"}}}'
-RESPONSE=$(run_json "$GET_PARENTS")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Parents of"; then
-    echo "✓ get_parents"
-    ((PASS++))
-else
-    echo "✗ get_parents"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"get_parents","arguments":{"id":"I3"}}}')
+check_text "get_parents" "$RESPONSE" "Parents of"
 
-GET_PARENTS_STRUCTURED='{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"get_parents","arguments":{"id":"I3"}}}'
-RESPONSE=$(run_json "$GET_PARENTS_STRUCTURED")
-if echo "$RESPONSE" | jq -r '.result.structuredContent.families' 2>/dev/null | grep -q "F1"; then
-    echo "✓ get_parents structuredContent has families"
-    ((PASS++))
-else
-    echo "✗ get_parents structuredContent has families"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"get_parents","arguments":{"id":"I3"}}}')
+check_jq_contains "get_parents structuredContent has families" "$RESPONSE" '.result.structuredContent.families' "F1"
 
-GET_CHILDREN_NOT_FOUND='{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"get_children","arguments":{"id":"I3"}}}'
-RESPONSE=$(run_json "$GET_CHILDREN_NOT_FOUND")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "No children found"; then
-    echo "✓ get_children no children"
-    ((PASS++))
-else
-    echo "✗ get_children no children"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"get_children","arguments":{"id":"I3"}}}')
+check_text "get_children no children" "$RESPONSE" "No children found"
 
-GET_ANCESTORS='{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"get_ancestors","arguments":{"id":"I1"}}}'
-RESPONSE=$(run_json "$GET_ANCESTORS")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Ancestors of"; then
-    echo "✓ get_ancestors"
-    ((PASS++))
-else
-    echo "✗ get_ancestors"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"get_ancestors","arguments":{"id":"I1"}}}')
+check_text "get_ancestors" "$RESPONSE" "Ancestors of"
 
-GET_DESCENDANTS='{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"get_descendants","arguments":{"id":"I1"}}}'
-RESPONSE=$(run_json "$GET_DESCENDANTS")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Descendants of"; then
-    echo "✓ get_descendant"
-    ((PASS++))
-else
-    echo "✗ get_descendants"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"get_descendants","arguments":{"id":"I1"}}}')
+check_text "get_descendants" "$RESPONSE" "Descendants of"
 
-GET_STATISTICS='{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"get_statistics","arguments":{}}}'
-RESPONSE=$(run_json "$GET_STATISTICS")
-if echo "$RESPONSE" | jq -r '.result.content[0].text' 2>/dev/null | grep -q "Total individuals"; then
-    echo "✓ get_statistics"
-    ((PASS++))
-else
-    echo "✗ get_statistics"
-    ((FAIL++))
-fi
+RESPONSE=$(run_json '{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"get_statistics","arguments":{}}}')
+check_text "get_statistics" "$RESPONSE" "Total individuals"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 
-[ $FAIL -gt 0 ] && exit 1
+if [ "$FAIL" -gt 0 ]; then
+    exit 1
+fi
 exit 0

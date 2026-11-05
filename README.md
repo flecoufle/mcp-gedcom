@@ -16,17 +16,35 @@ MCP (Model Context Protocol) server for reading genealogical data from GEDCOM fi
 
 ## Quick Start
 
-### Docker
+The project is built and tested through Docker. Only `make`, `git` and `docker` are required on the host.
+
 ```bash
-docker build -t mcp-gedcom .
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | docker run -i --rm mcp-gedcom
+make doctor
+make test
+make image
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | docker run -i --rm mcp-gedcom:latest
 ```
 
-### Local
+Run the server with a GEDCOM file:
+
 ```bash
-go build -o mcp-gedcom_linux_amd64 ./cmd/mcp-gedcom/server
-./mcp-gedcom_linux_amd64 -gedcom-file sample/simpsons.ged
+make run GEDCOM_FILE=./sample/simpsons.ged
 ```
+
+## Development
+
+```bash
+make test-unit        # unit tests in Docker
+make test-integration # integration tests in Docker
+make test             # both
+make ci               # tests + runtime image
+make shell            # interactive Go shell, source mounted at /src
+make clean            # remove tagged images
+```
+
+There is no local Go toolchain requirement: compilation and tests always happen inside the Docker build stages.
+
+`make test-unit` and `make test-integration` stream their output and bypass the Docker cache for the test stage, so the tests actually run on every invocation. Re-enable caching with `make test-integration INTEGRATION_NO_CACHE=`.
 
 ## Usage
 

@@ -1,28 +1,45 @@
-# --- builder ---
-FROM golang:1.26-alpine AS builder
+ARG GO_VERSION=1.26
 
-RUN apk add --no-cache git
+# --- dependencies ---
+FROM golang:${GO_VERSION}-alpine AS base
 
-WORKDIR /app
+RUN apk add --no-cache git bash jq make
+
+WORKDIR /src
 
 COPY go.mod go.sum ./
 RUN go mod download
 
+# --- source ---
+FROM base AS source
+
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o mcp-gedcom ./cmd/mcp-gedcom/server
+# --- build ---
+FROM source AS build
 
-# --- final ---
-FROM alpine:latest
+ARG VERSION=dev
 
-RUN apk --no-cache add bash jq
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w -X main.Version=${VERSION}" \
+    -o /out/mcp-gedcom ./cmd/mcp-gedcom/server
+
+# --- unit tests ---
+FROM source AS unit
+
+RUN go vet ./... && go test -count=1 ./...
+
+# --- integration tests ---
+FROM build AS integration
+
+RUN BIN=/out/mcp-gedcom GEDCOM_FILE=/src/gedcom.ged bash ./test.sh
+
+# --- runtime ---
+FROM alpine:latest AS runtime
 
 WORKDIR /app
 
-COPY --from=builder /app/mcp-gedcom ./mcp-gedcom
-COPY test.sh /app/test.sh
-COPY sample/gedcom.ged /app/gedcom.ged
-
-RUN chmod +x /app/test.sh && /app/test.sh
+COPY --from=build /out/mcp-gedcom ./mcp-gedcom
+COPY sample/gedcom.ged ./gedcom.ged
 
 ENTRYPOINT ["./mcp-gedcom"]

@@ -25,8 +25,8 @@ mcp-gedcom/
 │   └── workflows/
 │       ├── ci.yml               # CI workflow
 │       └── release.yml          # Release workflow
-├── Dockerfile                   # Multi-stage Docker build
-├── test.sh                      # Test script (run during Docker build)
+├── Dockerfile                   # Multi-stage Docker build (unit/integration/runtime)
+├── test.sh                      # Integration test script (run in Docker test stage)
 ├── go.mod
 ├── go.sum
 ├── .gitignore
@@ -214,37 +214,47 @@ Unknown tools also return an error.
 
 ## Docker
 
-### Build
+### Build and test (Docker only)
+
+Compilation and tests always happen inside Docker. The host only needs `make`, `git` and `docker`.
 
 ```bash
-docker build -t mcp-gedcom .
+make doctor            # check Docker availability
+make test-unit         # unit tests in Docker
+make test-integration  # integration tests in Docker
+make test              # unit + integration
+make image             # runtime image (mcp-gedcom:latest)
+make ci                # tests + runtime image
 ```
+
+The `test-unit` and `test-integration` targets stream their output and bypass the Docker cache for the test stage, so tests run on every invocation. Re-enable caching with `make test-integration INTEGRATION_NO_CACHE=`.
 
 ### Run
 
 ```bash
-docker run -it --rm mcp-gedcom
+make run GEDCOM_FILE=./sample/simpsons.ged
 ```
+
+Or directly:
+
+```bash
+docker run -i --rm -v "$PWD/sample/simpsons.ged:/app/gedcom.ged:ro" mcp-gedcom:latest
+```
+
+### Development shell
+
+```bash
+make shell
+```
+
+Opens a shell in a Go image with the source mounted at `/src`. Use it for ad-hoc `go test`, `go build` or debugging. No local Go installation is required.
 
 ### Exemple d'appel
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | docker run -i --rm mcp-gedcom
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | docker run -i --rm mcp-gedcom:latest
 
-echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil"}}}' | docker run -i --rm mcp-gedcom
-```
-
-### Local Build & Running
-
-```bash
-# Build the server
-go build -o mcp-gedcom ./cmd/mcp-gedcom/server
-
-# Run with default (first .ged found in current directory)
-./mcp-gedcom
-
-# Run with specific directory containing GEDCOM files
-./mcp-gedcom -gedcom-path /sample/ -gedcom-file gedcom.ged
+echo '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"search_surnames","arguments":{"pattern":"Wil"}}}' | docker run -i --rm mcp-gedcom:latest
 ```
 
 ### Protocol
@@ -270,8 +280,8 @@ All tools (except `get_statistics`) support an optional `givenName` boolean para
 
 | Value | Behavior |
 |-------|----------|
-| `true` (default) | Display full given name (e.g., "John Michael") |
-| `false` | Display usage name (quoted nickname) if present, falls back to full given name |
+| `true` | Display full given name (e.g., "John Michael") |
+| `false` (default) | Display usage name (quoted nickname) if present, falls back to full given name |
 
 ### Implementation Details
 

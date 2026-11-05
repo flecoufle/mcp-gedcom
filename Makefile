@@ -1,59 +1,67 @@
-APP_NAME    ?= mcp-gedcom
-BINARY      ?= $(APP_NAME)
-GO          ?= go
-CMD_PATH    ?= ./cmd/mcp-gedcom/server
-GEDCOM_FILE ?= gedcom.ged
--include .env
+DOCKER      ?= docker
+IMAGE       ?= mcp-gedcom
+VERSION     ?= $(shell v=$$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//'); echo "$${v:-dev}")
+GEDCOM_FILE ?= $(CURDIR)/gedcom.ged
+BUILD_ARGS  ?= --build-arg VERSION=$(VERSION)
 
-VPC_HOST    ?=
-USER_DIR    ?=
+# Test stages always re-run and stream their output. Override with e.g.
+#   make test-integration INTEGRATION_NO_CACHE=
+TEST_BUILD_FLAGS    ?= --progress=plain
+UNIT_NO_CACHE       ?= --no-cache-filter unit
+INTEGRATION_NO_CACHE ?= --no-cache-filter integration
 
-.PHONY: all build clean test test-unit test-integration vet run run-sample docker deps help publish
+.DEFAULT_GOAL := all
 
-all: vet build test-unit
+.PHONY: all doctor image build test test-unit test-integration ci run run-sample shell clean help
 
-build:
-	$(GO) build -o $(BINARY) $(CMD_PATH)
+all: ci
+
+doctor:
+	@$(DOCKER) version >/dev/null 2>&1 || { echo "✗ Docker daemon unavailable"; exit 1; }
+	@echo "✓ Docker $$($(DOCKER) version --format '{{.Server.Version}}')"
+	@echo "✓ Version $(VERSION)"
+
+image build:
+	$(DOCKER) build $(BUILD_ARGS) --target runtime -t $(IMAGE):$(VERSION) -t $(IMAGE):latest .
 
 test-unit:
-	$(GO) test ./...
+	$(DOCKER) build $(BUILD_ARGS) $(TEST_BUILD_FLAGS) $(UNIT_NO_CACHE) --target unit .
 
-test-integration: build
-	./test.sh
+test-integration:
+	$(DOCKER) build $(BUILD_ARGS) $(TEST_BUILD_FLAGS) $(INTEGRATION_NO_CACHE) --target integration .
 
 test: test-unit test-integration
 
-vet:
-	$(GO) vet ./...
+ci: test image
+
+run: image
+	@test -f "$(abspath $(GEDCOM_FILE))" || { echo "✗ GEDCOM file not found: $(abspath $(GEDCOM_FILE))"; exit 1; }
+	$(DOCKER) run --rm -i -v "$(abspath $(GEDCOM_FILE)):/app/gedcom.ged:ro" $(IMAGE):latest
+
+run-sample: GEDCOM_FILE := $(CURDIR)/sample/simpsons.ged
+run-sample: run
+
+shell:
+	$(DOCKER) build $(BUILD_ARGS) --target source -t $(IMAGE):dev .
+	$(DOCKER) run --rm -it -v "$(CURDIR):/src" -w /src $(IMAGE):dev sh
 
 clean:
-	rm -f $(BINARY)
-
-run: build
-	./$(BINARY) -gedcom-file sample/$(GEDCOM_FILE)
-
-run-sample: build
-	./$(BINARY) -gedcom-file sample/simpsons.ged
-
-docker:
-	docker build -t $(APP_NAME) .
-
-deps:
-	$(GO) mod download
-
-publish:
-	scp ./dist/$(APP_NAME) $(VPC_HOST):/home/$(USER_DIR)/services/pico/
-	ssh $(VPC_HOST) "sudo chown root:root /home/$(USER_DIR)/services/pico/$(APP_NAME)"
+	-$(DOCKER) image rm -f $(IMAGE):$(VERSION) $(IMAGE):latest $(IMAGE):dev
 
 help:
 	@echo "Usage:"
-	@echo "  make               Default: vet + build + test-unit"
-	@echo "  make build         Build the server binary"
-	@echo "  make test-unit     Run unit tests (go test ./...)"
-	@echo "  make test          Run all tests (unit + integration)"
-	@echo "  make vet           Run go vet"
-	@echo "  make clean         Remove built artifacts"
-	@echo "  make run           Run server with default GEDCOM"
-	@echo "  make run-sample    Run server with simpsons.ged"
-	@echo "  make docker        Build Docker image"
-	@echo "  make deps          Download Go dependencies"
+	@echo "  make               Default: ci (tests + runtime image)"
+	@echo "  make doctor        Check Docker availability"
+	@echo "  make image         Build the runtime Docker image"
+	@echo "  make build         Alias for 'make image'"
+	@echo "  make test-unit     Run unit tests in Docker"
+	@echo "  make test-integration  Run integration tests in Docker (streams output, no cache)"
+	@echo "  make test          Run unit + integration tests in Docker"
+	@echo "  make ci            Run tests and build the runtime image"
+	@echo "  make run           Run the image with GEDCOM_FILE mounted"
+	@echo "  make run-sample    Run the image with sample/simpsons.ged"
+	@echo "  make shell         Open a Go shell with the source mounted"
+	@echo "  make clean         Remove tagged Docker images"
+	@echo ""
+	@echo "Test targets always re-run their stage and stream output."
+	@echo "Re-enable caching with: make test-integration INTEGRATION_NO_CACHE="

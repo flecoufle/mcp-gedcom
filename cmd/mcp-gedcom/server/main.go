@@ -18,6 +18,9 @@ import (
 	"github.com/flecoufle/mcp-gedcom/internal/tools"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=...".
+var Version = "dev"
+
 func main() {
 	gedcomFile := flag.String("gedcom-file", "", "GEDCOM file name (used with --gedcom-path or in current directory)")
 	gedcomPath := flag.String("gedcom-path", "", "Directory to search for GEDCOM files")
@@ -136,7 +139,7 @@ func handleRequest(req *mcp.JSONRPCRequest) *mcp.JSONRPCResponse {
 		return &mcp.JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      id,
-			Result:  mcp.NewInitializeResult("mcp-gedcom", "1.0.1"),
+			Result:  mcp.NewInitializeResult("mcp-gedcom", Version),
 		}
 
 	case "tools/list":
@@ -301,8 +304,8 @@ func handleRequest(req *mcp.JSONRPCRequest) *mcp.JSONRPCResponse {
 					Properties: map[string]mcp.Property{
 						"id1":        {Type: "string", Description: "ID of the first person"},
 						"id2":        {Type: "string", Description: "ID of the second person"},
-						"maxDepth":   {Type: "number", Description: "Maximum generations to search (default: 10)"},
-						"maxResults": {Type: "number", Description: "Maximum number of relationship links to return (default: 5)"},
+						"maxDepth":   {Type: "number", Description: "Maximum generations to search (default: 15)"},
+						"maxResults": {Type: "number", Description: "Maximum number of relationship links to return (default: 10)"},
 						"givenName":  {Type: "boolean", Description: "Show given name instead of usage name (default: false)"},
 					},
 					Required: []string{"id1", "id2"},
